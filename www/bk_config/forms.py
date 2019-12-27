@@ -1,7 +1,5 @@
 # coding=utf8
 
-from __future__ import unicode_literals
-
 import re
 import json
 from django import forms
@@ -30,7 +28,7 @@ class SourceMapForm(BaseForm):
 }"""
         }))
 
-    name_key_pattern = "^[a-zA-Z\d_]+$"
+    name_key_pattern = r"^[a-zA-Z\d_]+$"
     map_key = 'CONFIG_SOURCE_MAP'
 
     def clean_name_key(self):

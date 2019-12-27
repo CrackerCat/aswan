@@ -29,7 +29,9 @@ def parse_msg(msg):
     dt = datetime.strptime(dt, '%Y-%m-%d %H:%M:%S,%f')
     d = json.loads(body)
     d['time'] = dt
-    d['user_id'] = d['req_body']['user_id']
+    req_body = d['req_body']
+    d['user_id'] = req_body.get('user_id', '')
+    d['req_body'] = json.dumps(req_body, ensure_ascii=False)
     return d
 
 
@@ -73,7 +75,7 @@ def persistence_data(data):
 def process_hit_log_msg(msg):
     try:
         data = parse_msg(msg)
-    except ValueError:
+    except Exception:
         logger.error('invalid msg: {msg}'.format(msg=msg))
         return
     try:
@@ -84,19 +86,28 @@ def process_hit_log_msg(msg):
         logger.error('persistence data error: {msg}'.format(msg=msg))
 
 
+def main(conn, private_queue_name):
+    while True:
+        sp_log = conn.lindex(private_queue_name, -1)
+
+        if not sp_log:
+            sp_log = conn.rpoplpush(HIT_LOG_QUEUE_NAME,
+                                    private_queue_name)
+
+        if sp_log:
+            process_hit_log_msg(sp_log)
+            conn.lpop(private_queue_name)
+        else:
+            time.sleep(0.1)
+
+
 class Command(BaseCommand):
     def handle(self, *args, **options):
         redis_client = get_log_redis_client()
         private_queue_name = get_private_queue_name()
         while True:
-            sp_log = redis_client.lindex(private_queue_name, -1)
-
-            if not sp_log:
-                sp_log = redis_client.rpoplpush(HIT_LOG_QUEUE_NAME,
-                                                private_queue_name)
-
-            if sp_log:
-                process_hit_log_msg(sp_log)
-                redis_client.rpop(private_queue_name)
-            else:
+            try:
+                main(redis_client, private_queue_name)
+            except Exception:
+                logger.exception('hit log persistence have error')
                 time.sleep(0.1)
